@@ -1,9 +1,16 @@
 from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters
+)
+
 from database import save_order, get_orders
 import os
 
-# TOKEN (Railway Variables dan olinadi)
+# TOKEN
 TOKEN = os.getenv("TOKEN")
 
 # ADMIN ID
@@ -27,19 +34,19 @@ buy_menu = [
     ["🔙 Orqaga"]
 ]
 
-# USER DATA
+# USER STATE
 user_data = {}
+
 
 # START
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = ReplyKeyboardMarkup(main_menu, resize_keyboard=True)
     await update.message.reply_text("📱 Xush kelibsiz!", reply_markup=keyboard)
 
-# ADMIN BUYURTMALAR KO‘RISH
-async def orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
 
-    if user_id != ADMIN_ID:
+# ORDERS (ADMIN)
+async def orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.from_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ Ruxsat yo‘q")
         return
 
@@ -56,68 +63,78 @@ async def orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(text)
 
+
 # MESSAGE HANDLER
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     user_id = update.message.from_user.id
 
-    # TELEFONLAR
-    if text == "📱 Telefonlar":
-        await update.message.reply_text("Telefon tanlang:", reply_markup=ReplyKeyboardMarkup(phones_menu, resize_keyboard=True))
+    # INIT USER STATE
+    if user_id not in user_data:
+        user_data[user_id] = {}
 
-    # IPHONE
+    state = user_data[user_id]
+
+    # MENU: TELEFONLAR
+    if text == "📱 Telefonlar":
+        await update.message.reply_text(
+            "Telefon tanlang:",
+            reply_markup=ReplyKeyboardMarkup(phones_menu, resize_keyboard=True)
+        )
+
     elif text == "🍎 iPhone 14":
-        user_data[user_id] = {"phone": "iPhone 14"}
+        state.clear()
+        state["phone"] = "iPhone 14"
 
         await update.message.reply_text(
             "🍎 iPhone 14\n💰 1000$",
             reply_markup=ReplyKeyboardMarkup(buy_menu, resize_keyboard=True)
         )
 
-    # SAMSUNG
     elif text == "🤖 Samsung S23":
-        user_data[user_id] = {"phone": "Samsung S23"}
+        state.clear()
+        state["phone"] = "Samsung S23"
 
         await update.message.reply_text(
             "🤖 Samsung S23\n💰 900$",
             reply_markup=ReplyKeyboardMarkup(buy_menu, resize_keyboard=True)
         )
 
-    # XIAOMI
     elif text == "📱 Xiaomi 13":
-        user_data[user_id] = {"phone": "Xiaomi 13"}
+        state.clear()
+        state["phone"] = "Xiaomi 13"
 
         await update.message.reply_text(
             "📱 Xiaomi 13\n💰 700$",
             reply_markup=ReplyKeyboardMarkup(buy_menu, resize_keyboard=True)
         )
 
-    # SOTIB OLISH
+    # BUY ORDER START
     elif text == "🛒 Sotib olish":
-        if user_id not in user_data:
-            user_data[user_id] = {}
+        if "phone" not in state:
+            await update.message.reply_text("Avval telefon tanlang ☝️")
+            return
 
+        state["step"] = "name"
         await update.message.reply_text("Ismingizni kiriting:")
-        user_data[user_id]["step"] = "name"
 
-    # NAME
-    elif user_id in user_data and user_data[user_id].get("step") == "name":
-        user_data[user_id]["name"] = text
-        user_data[user_id]["step"] = "phone"
+    # NAME STEP
+    elif state.get("step") == "name":
+        state["name"] = text
+        state["step"] = "phone_number"
         await update.message.reply_text("Telefon raqamingizni kiriting:")
 
-    # PHONE
-    elif user_id in user_data and user_data[user_id].get("step") == "phone":
-        user_data[user_id]["number"] = text
-        order = user_data[user_id]
+    # PHONE STEP
+    elif state.get("step") == "phone_number":
+        state["number"] = text
 
-        save_order(order["name"], order["number"], order["phone"])
+        save_order(state["name"], state["number"], state["phone"])
 
         msg = (
             f"🆕 YANGI BUYURTMA!\n\n"
-            f"📱 Telefon: {order['phone']}\n"
-            f"👤 Ism: {order['name']}\n"
-            f"📞 Raqam: {order['number']}"
+            f"📱 Telefon: {state['phone']}\n"
+            f"👤 Ism: {state['name']}\n"
+            f"📞 Raqam: {state['number']}"
         )
 
         await update.message.reply_text("✅ Buyurtma qabul qilindi!")
@@ -125,9 +142,12 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         user_data[user_id] = {}
 
-    # ORQAGA
+    # BACK
     elif text == "🔙 Orqaga":
-        await update.message.reply_text("Asosiy menyu", reply_markup=ReplyKeyboardMarkup(main_menu, resize_keyboard=True))
+        await update.message.reply_text(
+            "Asosiy menyu",
+            reply_markup=ReplyKeyboardMarkup(main_menu, resize_keyboard=True)
+        )
 
     elif text == "ℹ️ Biz haqimizda":
         await update.message.reply_text("Biz ishonchli telefon do‘konimiz 📱")
@@ -135,20 +155,32 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "📞 Aloqa":
         await update.message.reply_text("+998901234567")
 
+
 # MAIN
 def main():
     if not TOKEN:
-        print("❌ TOKEN topilmadi! Railway Variables tekshiring!")
+        print("❌ TOKEN topilmadi!")
         return
 
-    app = ApplicationBuilder().token(TOKEN).build()
+    app = (
+        ApplicationBuilder()
+        .token(TOKEN)
+        .read_timeout(30)
+        .write_timeout(30)
+        .connect_timeout(30)
+        .pool_timeout(30)
+        .build()
+    )
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("orders", orders))
-    app.add_handler(MessageHandler(filters.TEXT, message_handler))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
 
     print("🚀 Bot ishlayapti...")
-    app.run_polling()
+
+    # IMPORTANT FIX
+    app.run_polling(drop_pending_updates=True)
+
 
 if __name__ == "__main__":
     main()
