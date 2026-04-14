@@ -1,16 +1,15 @@
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-from database import save_order
 from database import save_order, get_orders
 import os
 
-# TOKEN (Railway Variables dan keladi)
+# TOKEN (Railway Variables dan olinadi)
 TOKEN = os.getenv("TOKEN")
 
 # ADMIN ID
 ADMIN_ID = 8095916235
 
-# MENYU
+# MENYULAR
 main_menu = [
     ["📱 Telefonlar"],
     ["ℹ️ Biz haqimizda", "📞 Aloqa"]
@@ -28,12 +27,34 @@ buy_menu = [
     ["🔙 Orqaga"]
 ]
 
+# USER DATA
 user_data = {}
 
 # START
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = ReplyKeyboardMarkup(main_menu, resize_keyboard=True)
     await update.message.reply_text("📱 Xush kelibsiz!", reply_markup=keyboard)
+
+# ADMIN BUYURTMALAR KO‘RISH
+async def orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+
+    if user_id != ADMIN_ID:
+        await update.message.reply_text("⛔ Ruxsat yo‘q")
+        return
+
+    orders = get_orders()
+
+    if not orders:
+        await update.message.reply_text("📭 Buyurtmalar yo‘q")
+        return
+
+    text = "📦 BUYURTMALAR:\n\n"
+
+    for o in orders:
+        text += f"#{o[0]} | {o[1]} | {o[2]} | {o[3]}\n"
+
+    await update.message.reply_text(text)
 
 # MESSAGE HANDLER
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -49,7 +70,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_data[user_id] = {"phone": "iPhone 14"}
 
         await update.message.reply_text(
-            "🍎 iPhone 14\n💰 1000$\n📱 Tanlandi",
+            "🍎 iPhone 14\n💰 1000$",
             reply_markup=ReplyKeyboardMarkup(buy_menu, resize_keyboard=True)
         )
 
@@ -58,7 +79,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_data[user_id] = {"phone": "Samsung S23"}
 
         await update.message.reply_text(
-            "🤖 Samsung S23\n💰 900$\n📱 Tanlandi",
+            "🤖 Samsung S23\n💰 900$",
             reply_markup=ReplyKeyboardMarkup(buy_menu, resize_keyboard=True)
         )
 
@@ -67,12 +88,15 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_data[user_id] = {"phone": "Xiaomi 13"}
 
         await update.message.reply_text(
-            "📱 Xiaomi 13\n💰 700$\n📱 Tanlandi",
+            "📱 Xiaomi 13\n💰 700$",
             reply_markup=ReplyKeyboardMarkup(buy_menu, resize_keyboard=True)
         )
 
     # SOTIB OLISH
     elif text == "🛒 Sotib olish":
+        if user_id not in user_data:
+            user_data[user_id] = {}
+
         await update.message.reply_text("Ismingizni kiriting:")
         user_data[user_id]["step"] = "name"
 
@@ -87,7 +111,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_data[user_id]["number"] = text
         order = user_data[user_id]
 
-        # DATABASE SAVE
         save_order(order["name"], order["number"], order["phone"])
 
         msg = (
@@ -107,7 +130,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Asosiy menyu", reply_markup=ReplyKeyboardMarkup(main_menu, resize_keyboard=True))
 
     elif text == "ℹ️ Biz haqimizda":
-        await update.message.reply_text("Biz eng yaxshi telefon do‘konimiz 📱")
+        await update.message.reply_text("Biz ishonchli telefon do‘konimiz 📱")
 
     elif text == "📞 Aloqa":
         await update.message.reply_text("+998901234567")
@@ -121,6 +144,7 @@ def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("orders", orders))
     app.add_handler(MessageHandler(filters.TEXT, message_handler))
 
     print("🚀 Bot ishlayapti...")
